@@ -1,0 +1,4 @@
+[Cleaned columns:]
+['asset_tag_id', 'description', 'purchased_from', 'purchase_date', 'brand', 'cost', 'model', 'serial_no', 'date_created', 'created_by']
+
+[Dropped rows with missing values in:] ['asset_tag_id', 'purchase_date', 'brand', 'created_by']
