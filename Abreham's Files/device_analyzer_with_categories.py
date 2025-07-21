@@ -357,7 +357,7 @@ def main():
             summary_df.to_excel(writer, sheet_name='Data_Quality_Summary', index=False)
         
         # Now apply color formatting
-        print("📝 Applying color formatting to Excel sheets...")
+        print("📝 Applying color  formatting to Excel sheets...")
         workbook = openpyxl.load_workbook(output_path)
         
         # Color scheme for different sheet types
