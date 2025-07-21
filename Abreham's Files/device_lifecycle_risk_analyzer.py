@@ -229,6 +229,41 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
         ]
     }
     
+    # Create additional analysis data first
+    print("\n📊 Creating detailed analysis summaries...")
+    
+    # Most risky brands analysis
+    brand_risk_analysis = df.groupby('Normalized Brand').agg({
+        'Total_Risk_Score': ['count', 'mean', 'max'],
+        'Device_Age_Years': 'mean',
+        'Risk_Level': lambda x: (x == 'HIGH RISK').sum()
+    }).round(1)
+    brand_risk_analysis.columns = ['Device_Count', 'Avg_Risk_Score', 'Max_Risk_Score', 'Avg_Age_Years', 'High_Risk_Count']
+    brand_risk_analysis = brand_risk_analysis.sort_values('Avg_Risk_Score', ascending=False).reset_index()
+    
+    # Most risky categories analysis
+    category_risk_analysis = df.groupby('Normalized Category').agg({
+        'Total_Risk_Score': ['count', 'mean', 'max'],
+        'Device_Age_Years': 'mean',
+        'Risk_Level': lambda x: (x == 'HIGH RISK').sum()
+    }).round(1)
+    category_risk_analysis.columns = ['Device_Count', 'Avg_Risk_Score', 'Max_Risk_Score', 'Avg_Age_Years', 'High_Risk_Count']
+    category_risk_analysis = category_risk_analysis.sort_values('Avg_Risk_Score', ascending=False).reset_index()
+    
+    # Age distribution analysis
+    age_distribution = pd.DataFrame({
+        'Age_Range': ['0-2 years', '3-4 years', '5-6 years', '7-9 years', '10+ years'],
+        'Device_Count': [
+            ((df['Device_Age_Years'] >= 0) & (df['Device_Age_Years'] < 3)).sum(),
+            ((df['Device_Age_Years'] >= 3) & (df['Device_Age_Years'] < 5)).sum(),
+            ((df['Device_Age_Years'] >= 5) & (df['Device_Age_Years'] < 7)).sum(),
+            ((df['Device_Age_Years'] >= 7) & (df['Device_Age_Years'] < 10)).sum(),
+            (df['Device_Age_Years'] >= 10).sum()
+        ]
+    })
+    age_distribution['Percentage'] = (age_distribution['Device_Count'] / len(df) * 100).round(1)
+    age_distribution['Risk_Assessment'] = ['Low Risk', 'Medium Risk', 'High Risk', 'Very High Risk', 'Critical Risk']
+
     # Age distribution analysis for high-risk devices
     if len(high_risk) > 0:
         very_old = (high_risk['Device_Age_Years'] >= 7).sum()
@@ -243,39 +278,71 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
         for brand, count in high_risk_brands.items():
             print(f"  {brand}: {count} devices")
     
+    # Display top risky brands overall
+    print(f"\n📈 TOP 5 RISKIEST BRANDS (by average risk score):")
+    top_risky_brands = brand_risk_analysis.head(5)
+    for idx, brand_data in top_risky_brands.iterrows():
+        print(f"  {brand_data['Normalized Brand']}: Avg Risk {brand_data['Avg_Risk_Score']:.1f} " +
+              f"({brand_data['Device_Count']} devices, {brand_data['High_Risk_Count']} high-risk)")
+    
+    # Display top risky categories
+    print(f"\n📂 TOP 5 RISKIEST CATEGORIES (by average risk score):")
+    top_risky_categories = category_risk_analysis.head(5)
+    for idx, cat_data in top_risky_categories.iterrows():
+        print(f"  {cat_data['Normalized Category']}: Avg Risk {cat_data['Avg_Risk_Score']:.1f} " +
+              f"({cat_data['Device_Count']} devices, {cat_data['High_Risk_Count']} high-risk)")
+    
+    # Display age distribution insights
+    print(f"\n📅 DEVICE AGE DISTRIBUTION:")
+    for idx, age_data in age_distribution.iterrows():
+        print(f"  {age_data['Age_Range']}: {age_data['Device_Count']} devices " +
+              f"({age_data['Percentage']:.1f}%) - {age_data['Risk_Assessment']}")
+    
     # Save results to Excel
     try:
         with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
-            # High Risk Devices (RED)
-            if len(high_risk) > 0:
-                high_risk.to_excel(writer, sheet_name='HIGH_RISK_Devices', index=False)
-            
-            # Medium Risk Devices (YELLOW)  
-            if len(medium_risk) > 0:
-                medium_risk.to_excel(writer, sheet_name='MEDIUM_RISK_Devices', index=False)
-            
-            # Low Risk Devices (GREEN)
-            if len(low_risk) > 0:
-                low_risk.to_excel(writer, sheet_name='LOW_RISK_Devices', index=False)
-            
-            # Complete Risk Analysis
+            # 1. Complete Risk Analysis - MOVED TO FIRST POSITION
             df.sort_values('Total_Risk_Score', ascending=False).to_excel(
                 writer, sheet_name='Complete_Risk_Analysis', index=False)
             
-            # Risk Summary Dashboard
+            # 2. Risk Summary Dashboard
             pd.DataFrame(risk_summary).to_excel(writer, sheet_name='Risk_Summary_Dashboard', index=False)
+            
+            # 3. Brand Risk Analysis
+            brand_risk_analysis.to_excel(writer, sheet_name='Brand_Risk_Analysis', index=False)
+            
+            # 4. Category Risk Analysis  
+            category_risk_analysis.to_excel(writer, sheet_name='Category_Risk_Analysis', index=False)
+            
+            # 5. Age Distribution Analysis
+            age_distribution.to_excel(writer, sheet_name='Age_Distribution_Analysis', index=False)
+            
+            # 6. High Risk Devices (RED)
+            if len(high_risk) > 0:
+                high_risk.to_excel(writer, sheet_name='HIGH_RISK_Devices', index=False)
+            
+            # 7. Medium Risk Devices (YELLOW)  
+            if len(medium_risk) > 0:
+                medium_risk.to_excel(writer, sheet_name='MEDIUM_RISK_Devices', index=False)
+            
+            # 8. Low Risk Devices (GREEN)
+            if len(low_risk) > 0:
+                low_risk.to_excel(writer, sheet_name='LOW_RISK_Devices', index=False)
         
         # Apply color formatting
         print("\n🎨 Applying color formatting to DLM risk analysis...")
         workbook = openpyxl.load_workbook(output_excel_path)
         
-        # Color scheme for risk levels
+        # Color scheme for risk levels and analysis sheets
         sheet_colors = {
-            'HIGH_RISK_Devices': ('C0392B', 'F5B7B1'),           # Bright Red - Critical
-            'MEDIUM_RISK_Devices': ('F39C12', 'FCF3CF'),         # Yellow/Orange - Caution  
-            'LOW_RISK_Devices': ('27AE60', 'D5F4E6'),            # Green - Safe
-            'Complete_Risk_Analysis': ('34495E', 'EBF5FB'),      # Blue-gray - Comprehensive
-            'Risk_Summary_Dashboard': ('8E44AD', 'E8DAEF')       # Purple - Executive Summary
+            'Complete_Risk_Analysis': ('2C3E50', 'EBF5FB'),      # Dark Blue - Primary Analysis
+            'Risk_Summary_Dashboard': ('8E44AD', 'E8DAEF'),      # Purple - Executive Summary
+            'Brand_Risk_Analysis': ('D68910', 'FEF9E7'),         # Orange - Brand Analysis
+            'Category_Risk_Analysis': ('148F77', 'E8F8F5'),      # Teal - Category Analysis
+            'Age_Distribution_Analysis': ('5B2C6F', 'F4ECF7'),   # Deep Purple - Age Analysis
+            'HIGH_RISK_Devices': ('C0392B', 'F5B7B1'),          # Bright Red - Critical
+            'MEDIUM_RISK_Devices': ('F39C12', 'FCF3CF'),        # Yellow/Orange - Caution  
+            'LOW_RISK_Devices': ('27AE60', 'D5F4E6')            # Green - Safe
         }
         
         # Apply formatting to each sheet
