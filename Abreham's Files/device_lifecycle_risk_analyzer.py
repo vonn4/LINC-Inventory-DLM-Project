@@ -4,43 +4,66 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font, Alignment
 
 def apply_sheet_formatting(workbook, sheet_name, header_color, data_color=None):
-    """Apply color formatting to Excel sheets"""
-    if sheet_name not in workbook.sheetnames:
-        return
-    
-    ws = workbook[sheet_name]
-    
-    # Define color fills
-    header_fill = PatternFill(start_color=header_color, end_color=header_color, fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
-    center_alignment = Alignment(horizontal="center", vertical="center")
-    
-    # Apply header formatting (first row)
-    if ws.max_row > 0:
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = center_alignment
-    
-    # Apply alternating row colors if data_color is provided
-    if data_color and ws.max_row > 1:
-        data_fill = PatternFill(start_color=data_color, end_color=data_color, fill_type="solid")
-        for row_num in range(2, ws.max_row + 1, 2):  # Every other row starting from row 2
-            for cell in ws[row_num]:
-                cell.fill = data_fill
-    
-    # Auto-adjust column widths
-    for column in ws.columns:
-        max_length = 0
-        column_letter = column[0].column_letter
-        for cell in column:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
-        ws.column_dimensions[column_letter].width = adjusted_width
+    """Apply color formatting to Excel sheets with improved error handling"""
+    try:
+        if sheet_name not in workbook.sheetnames:
+            print(f"  ⚠️  Sheet '{sheet_name}' not found in workbook")
+            return False
+        
+        ws = workbook[sheet_name]
+        print(f"  🎨 Formatting sheet '{sheet_name}' with {ws.max_row} rows and {ws.max_column} columns")
+        
+        # Ensure we have valid hex colors (remove # if present and ensure 6 digits)
+        if header_color.startswith('#'):
+            header_color = header_color[1:]
+        if len(header_color) != 6:
+            print(f"  ⚠️  Invalid header color: {header_color}, using default")
+            header_color = "366092"
+            
+        if data_color:
+            if data_color.startswith('#'):
+                data_color = data_color[1:]
+            if len(data_color) != 6:
+                print(f"  ⚠️  Invalid data color: {data_color}, using default")
+                data_color = "D9E2F3"
+        
+        # Define color fills
+        header_fill = PatternFill(start_color=header_color, end_color=header_color, fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        center_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Apply header formatting (first row)
+        if ws.max_row > 0:
+            for cell in ws[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = center_alignment
+        
+        # Apply alternating row colors if data_color is provided
+        if data_color and ws.max_row > 1:
+            data_fill = PatternFill(start_color=data_color, end_color=data_color, fill_type="solid")
+            for row_num in range(2, ws.max_row + 1, 2):  # Every other row starting from row 2
+                for cell in ws[row_num]:
+                    cell.fill = data_fill
+        
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+            ws.column_dimensions[column_letter].width = adjusted_width
+        
+        return True
+        
+    except Exception as e:
+        print(f"  ❌ Error formatting sheet '{sheet_name}': {e}")
+        return False
 
 def calculate_device_age_risk(age_years):
     """
@@ -67,6 +90,7 @@ def calculate_brand_risk(brand):
     if pd.isna(brand) or str(brand).strip() == '':
         return 30, 'High Risk (Unknown Brand)'
     
+    # Convert to lowercase for comparison (since brands are now title case in data)
     brand_str = str(brand).lower().strip()
     
     # Tier 1: Enterprise/Premium brands (Low Risk)
@@ -95,6 +119,7 @@ def calculate_category_risk(category):
     if pd.isna(category) or str(category).strip() == '':
         return 20, 'High Risk (Unknown Category)'
     
+    # Convert to lowercase for comparison (since categories are now title case in data)
     category_str = str(category).lower().strip()
     
     # Critical infrastructure devices (High Risk if old)
@@ -149,12 +174,12 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
     df['Age_Risk_Reason'] = [result[1] for result in age_risk_results]
     
     # Brand Risk (30 points max - Important)
-    brand_risk_results = df['Normalized Brand'].apply(calculate_brand_risk)
+    brand_risk_results = df['Brand'].apply(calculate_brand_risk)
     df['Brand_Risk_Score'] = [result[0] for result in brand_risk_results]
     df['Brand_Risk_Reason'] = [result[1] for result in brand_risk_results]
     
     # Category Risk (20 points max - Moderate)
-    category_risk_results = df['Normalized Category'].apply(calculate_category_risk)
+    category_risk_results = df['Category'].apply(calculate_category_risk)
     df['Category_Risk_Score'] = [result[0] for result in category_risk_results]
     df['Category_Risk_Reason'] = [result[1] for result in category_risk_results]
     
@@ -190,7 +215,7 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
         print(f"\n🚨 TOP 5 HIGHEST RISK DEVICES:")
         # Use Asset Tag ID as the device identifier
         identifier_col = 'Asset Tag ID'
-        display_cols = [identifier_col, 'Normalized Brand', 'Normalized Category', 
+        display_cols = [identifier_col, 'Brand', 'Category', 
                        'Device_Age_Years', 'Total_Risk_Score', 'Age_Risk_Reason']
         # Only include columns that actually exist
         available_cols = [col for col in display_cols if col in df.columns]
@@ -198,8 +223,8 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
         
         for idx, device in top_high_risk.iterrows():
             device_id = device.get('Asset Tag ID', f"Row {idx}")
-            brand = device.get('Normalized Brand', 'Unknown')
-            category = device.get('Normalized Category', 'Unknown')
+            brand = device.get('Brand', 'Unknown')
+            category = device.get('Category', 'Unknown')
             age = device.get('Device_Age_Years', 0)
             score = device.get('Total_Risk_Score', 0)
             print(f"  Asset {device_id}: {brand} {category} " +
@@ -233,7 +258,7 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
     print("\n📊 Creating detailed analysis summaries...")
     
     # Most risky brands analysis
-    brand_risk_analysis = df.groupby('Normalized Brand').agg({
+    brand_risk_analysis = df.groupby('Brand').agg({
         'Total_Risk_Score': ['count', 'mean', 'max'],
         'Device_Age_Years': 'mean',
         'Risk_Level': lambda x: (x == 'HIGH RISK').sum()
@@ -242,7 +267,7 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
     brand_risk_analysis = brand_risk_analysis.sort_values('Avg_Risk_Score', ascending=False).reset_index()
     
     # Most risky categories analysis
-    category_risk_analysis = df.groupby('Normalized Category').agg({
+    category_risk_analysis = df.groupby('Category').agg({
         'Total_Risk_Score': ['count', 'mean', 'max'],
         'Device_Age_Years': 'mean',
         'Risk_Level': lambda x: (x == 'HIGH RISK').sum()
@@ -273,7 +298,7 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
         print(f"  📅 Old (5-7 years): {old} devices")
         
         # Brand analysis for high-risk devices
-        high_risk_brands = high_risk['Normalized Brand'].value_counts().head(5)
+        high_risk_brands = high_risk['Brand'].value_counts().head(5)
         print(f"\n🏷️  TOP BRANDS IN HIGH RISK:")
         for brand, count in high_risk_brands.items():
             print(f"  {brand}: {count} devices")
@@ -282,14 +307,14 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
     print(f"\n📈 TOP 5 RISKIEST BRANDS (by average risk score):")
     top_risky_brands = brand_risk_analysis.head(5)
     for idx, brand_data in top_risky_brands.iterrows():
-        print(f"  {brand_data['Normalized Brand']}: Avg Risk {brand_data['Avg_Risk_Score']:.1f} " +
+        print(f"  {brand_data['Brand']}: Avg Risk {brand_data['Avg_Risk_Score']:.1f} " +
               f"({brand_data['Device_Count']} devices, {brand_data['High_Risk_Count']} high-risk)")
     
     # Display top risky categories
     print(f"\n📂 TOP 5 RISKIEST CATEGORIES (by average risk score):")
     top_risky_categories = category_risk_analysis.head(5)
     for idx, cat_data in top_risky_categories.iterrows():
-        print(f"  {cat_data['Normalized Category']}: Avg Risk {cat_data['Avg_Risk_Score']:.1f} " +
+        print(f"  {cat_data['Category']}: Avg Risk {cat_data['Avg_Risk_Score']:.1f} " +
               f"({cat_data['Device_Count']} devices, {cat_data['High_Risk_Count']} high-risk)")
     
     # Display age distribution insights
@@ -331,31 +356,44 @@ def analyze_device_lifecycle_risk(input_excel_path, output_excel_path):
         
         # Apply color formatting
         print("\n🎨 Applying color formatting to DLM risk analysis...")
-        workbook = openpyxl.load_workbook(output_excel_path)
         
-        # Color scheme for risk levels and analysis sheets
-        sheet_colors = {
-            'Complete_Risk_Analysis': ('2C3E50', 'EBF5FB'),      # Dark Blue - Primary Analysis
-            'Risk_Summary_Dashboard': ('8E44AD', 'E8DAEF'),      # Purple - Executive Summary
-            'Brand_Risk_Analysis': ('D68910', 'FEF9E7'),         # Orange - Brand Analysis
-            'Category_Risk_Analysis': ('148F77', 'E8F8F5'),      # Teal - Category Analysis
-            'Age_Distribution_Analysis': ('5B2C6F', 'F4ECF7'),   # Deep Purple - Age Analysis
-            'HIGH_RISK_Devices': ('C0392B', 'F5B7B1'),          # Bright Red - Critical
-            'MEDIUM_RISK_Devices': ('F39C12', 'FCF3CF'),        # Yellow/Orange - Caution  
-            'LOW_RISK_Devices': ('27AE60', 'D5F4E6')            # Green - Safe
-        }
-        
-        # Apply formatting to each sheet
-        sheets_formatted = 0
-        for sheet_name, (header_color, data_color) in sheet_colors.items():
-            if sheet_name in workbook.sheetnames:
-                apply_sheet_formatting(workbook, sheet_name, header_color, data_color)
-                sheets_formatted += 1
-                print(f"  ✅ Formatted {sheet_name}")
-        
-        workbook.save(output_excel_path)
-        workbook.close()
-        print(f"🎨 Applied color formatting to {sheets_formatted} sheets!")
+        try:
+            workbook = openpyxl.load_workbook(output_excel_path)
+            print(f"📂 Loaded workbook with sheets: {workbook.sheetnames}")
+            
+            # Color scheme for risk levels and analysis sheets
+            sheet_colors = {
+                'Complete_Risk_Analysis': ('2C3E50', 'EBF5FB'),      # Dark Blue - Primary Analysis
+                'Risk_Summary_Dashboard': ('8E44AD', 'E8DAEF'),      # Purple - Executive Summary
+                'Brand_Risk_Analysis': ('D68910', 'FEF9E7'),         # Orange - Brand Analysis
+                'Category_Risk_Analysis': ('148F77', 'E8F8F5'),      # Teal - Category Analysis
+                'Age_Distribution_Analysis': ('5B2C6F', 'F4ECF7'),   # Deep Purple - Age Analysis
+                'HIGH_RISK_Devices': ('C0392B', 'F5B7B1'),          # Bright Red - Critical
+                'MEDIUM_RISK_Devices': ('F39C12', 'FCF3CF'),        # Yellow/Orange - Caution  
+                'LOW_RISK_Devices': ('27AE60', 'D5F4E6')            # Green - Safe
+            }
+            
+            # Apply formatting to each sheet
+            sheets_formatted = 0
+            for sheet_name, (header_color, data_color) in sheet_colors.items():
+                if sheet_name in workbook.sheetnames:
+                    success = apply_sheet_formatting(workbook, sheet_name, header_color, data_color)
+                    if success:
+                        sheets_formatted += 1
+                        print(f"  ✅ Formatted {sheet_name}")
+                    else:
+                        print(f"  ❌ Failed to format {sheet_name}")
+                else:
+                    print(f"  ⚠️  Sheet {sheet_name} not found")
+            
+            workbook.save(output_excel_path)
+            workbook.close()
+            print(f"🎨 Applied color formatting to {sheets_formatted} sheets!")
+            print(f"💾 Saved formatted workbook to: {output_excel_path}")
+            
+        except Exception as e:
+            print(f"❌ Error during color formatting: {e}")
+            print("📄 Excel file was saved without color formatting")
         
         print(f"\n✅ Device Lifecycle Management risk analysis saved to: {output_excel_path}")
         print(f"\n📊 EXECUTIVE SUMMARY:")
