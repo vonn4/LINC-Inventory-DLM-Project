@@ -7,43 +7,66 @@ def read_device_data(csv_path):
     return pd.read_csv(csv_path, encoding='latin-1')
 
 def apply_sheet_formatting(workbook, sheet_name, header_color, data_color=None):
-    """Apply color formatting to Excel sheets"""
-    if sheet_name not in workbook.sheetnames:
-        return
-    
-    ws = workbook[sheet_name]
-    
-    # Define color fills
-    header_fill = PatternFill(start_color=header_color, end_color=header_color, fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
-    center_alignment = Alignment(horizontal="center", vertical="center")
-    
-    # Apply header formatting (first row)
-    if ws.max_row > 0:
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = center_alignment
-    
-    # Apply alternating row colors if data_color is provided
-    if data_color and ws.max_row > 1:
-        data_fill = PatternFill(start_color=data_color, end_color=data_color, fill_type="solid")
-        for row_num in range(2, ws.max_row + 1, 2):  # Every other row starting from row 2
-            for cell in ws[row_num]:
-                cell.fill = data_fill
-    
-    # Auto-adjust column widths
-    for column in ws.columns:
-        max_length = 0
-        column_letter = column[0].column_letter
-        for cell in column:
-            try:
-                if len(str(cell.value)) > max_length:
-                    max_length = len(str(cell.value))
-            except:
-                pass
-        adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
-        ws.column_dimensions[column_letter].width = adjusted_width
+    """Apply color formatting to Excel sheets with improved error handling"""
+    try:
+        if sheet_name not in workbook.sheetnames:
+            print(f"  ⚠️  Sheet '{sheet_name}' not found in workbook")
+            return False
+        
+        ws = workbook[sheet_name]
+        print(f"  🎨 Formatting sheet '{sheet_name}' with {ws.max_row} rows and {ws.max_column} columns")
+        
+        # Ensure we have valid hex colors (remove # if present and ensure 6 digits)
+        if header_color.startswith('#'):
+            header_color = header_color[1:]
+        if len(header_color) != 6:
+            print(f"  ⚠️  Invalid header color: {header_color}, using default")
+            header_color = "366092"
+            
+        if data_color:
+            if data_color.startswith('#'):
+                data_color = data_color[1:]
+            if len(data_color) != 6:
+                print(f"  ⚠️  Invalid data color: {data_color}, using default")
+                data_color = "D9E2F3"
+        
+        # Define color fills
+        header_fill = PatternFill(start_color=header_color, end_color=header_color, fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        center_alignment = Alignment(horizontal="center", vertical="center")
+        
+        # Apply header formatting (first row)
+        if ws.max_row > 0:
+            for cell in ws[1]:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = center_alignment
+        
+        # Apply alternating row colors if data_color is provided
+        if data_color and ws.max_row > 1:
+            data_fill = PatternFill(start_color=data_color, end_color=data_color, fill_type="solid")
+            for row_num in range(2, ws.max_row + 1, 2):  # Every other row starting from row 2
+                for cell in ws[row_num]:
+                    cell.fill = data_fill
+        
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+            ws.column_dimensions[column_letter].width = adjusted_width
+        
+        return True
+        
+    except Exception as e:
+        print(f"  ❌ Error formatting sheet '{sheet_name}': {e}")
+        return False
 
 def main():
     csv_path = r'C:\Users\AbrehamMesfin\Downloads\Inventory.csv'
@@ -52,6 +75,10 @@ def main():
     try:
         df = read_device_data(csv_path)
         print(f"Successfully loaded data with {len(df)} rows")
+        
+        # Keep a copy of the original data completely unchanged
+        original_df = df.copy()
+        
     except FileNotFoundError:
         print(f"Error: Could not find the CSV file at {csv_path}")
         print("Please make sure the file exists or update the csv_path variable.")
@@ -77,13 +104,15 @@ def main():
         for old, new in brand_replacements.items():
             if brand_str == old:
                 brand_str = new
-        return brand_str.replace('-', ' ').replace('_', ' ')
+        # Clean and format with proper capitalization
+        cleaned_brand = brand_str.replace('-', ' ').replace('_', ' ')
+        return cleaned_brand.title() if cleaned_brand else ""
 
     # Extract and normalize all unique brand names from the Brand column
     brand_name = set(df['Brand'].dropna().apply(normalize_brand).unique())
     
-    # Add normalized brand column
-    df['Normalized Brand'] = df['Brand'].apply(normalize_brand)
+    # Update the existing Brand column with normalized values
+    df['Brand'] = df['Brand'].apply(normalize_brand)
 
     # Remove unrecognized devices from main DataFrame
     recognized_brands = df[~(df['Brand'].isna() | (df['Brand'].astype(str).str.strip() == ''))]
@@ -107,13 +136,15 @@ def main():
         for old, new in category_replacements.items():
             if category_str == old:
                 category_str = new
-        return category_str.replace('-', ' ').replace('_', ' ')
+        # Clean and format with proper capitalization
+        cleaned_category = category_str.replace('-', ' ').replace('_', ' ')
+        return cleaned_category.title() if cleaned_category else ""
 
     # Extract and normalize all unique category names from the Category column
     category_names = set(df['Category'].dropna().apply(normalize_category).unique())
     
-    # Add normalized category column
-    df['Normalized Category'] = df['Category'].apply(normalize_category)
+    # Update the existing Category column with normalized values
+    df['Category'] = df['Category'].apply(normalize_category)
 
     # Remove unrecognized categories from main DataFrame
     recognized_categories = df[~(df['Category'].isna() | (df['Category'].astype(str).str.strip() == ''))]
@@ -266,8 +297,8 @@ def main():
     try:
         # First, save data to Excel without formatting
         with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-            # Original data sheet - unprocessed data for comparison
-            df.to_excel(writer, sheet_name='Original_Data', index=False)
+            # Original data sheet - PURE UNMODIFIED inventory data as uploaded
+            original_df.to_excel(writer, sheet_name='Original_Data', index=False)
             
             # Brand sheets
             recognized_brands.to_excel(writer, sheet_name='All_Brands_Recognized', index=False)
@@ -294,7 +325,9 @@ def main():
                 (df['Purchase_Date_Status'] == 'Valid')
             ]
             if len(fully_valid) > 0:
-                fully_valid.to_excel(writer, sheet_name='Fully_Valid_Data', index=False)
+                # Remove calculation columns from Fully_Valid_Data sheet
+                fully_valid_clean = fully_valid.drop(columns=['Purchase_Date_Parsed', 'Purchase_Date_Status', 'Device_Age_Years'], errors='ignore')
+                fully_valid_clean.to_excel(writer, sheet_name='Fully_Valid_Data', index=False)
             
             # All invalid data - devices with ANY invalid data (brand, category, or purchase date)
             all_invalid = df[
@@ -357,35 +390,48 @@ def main():
             summary_df.to_excel(writer, sheet_name='Data_Quality_Summary', index=False)
         
         # Now apply color formatting
-        print("📝 Applying color  formatting to Excel sheets...")
-        workbook = openpyxl.load_workbook(output_path)
+        print("\n🎨 Applying color formatting to Excel sheets...")
         
-        # Color scheme for different sheet types
-        sheet_colors = {
-            'Original_Data': ('366092', 'D9E2F3'),          # Blue theme - original data
-            'All_Brands_Recognized': ('70AD47', 'E2EFDA'),  # Green theme - valid data
-            'Brands_Unrecognized': ('E74C3C', 'FADBD8'),    # Red theme - invalid data
-            'All_Categories_Recognized': ('70AD47', 'E2EFDA'),  # Green theme - valid data
-            'Categories_Unrecognized': ('E74C3C', 'FADBD8'), # Red theme - invalid data
-            'Valid_Purchase_Dates': ('70AD47', 'E2EFDA'),   # Green theme - valid data
-            'Invalid_Purchase_Dates': ('E74C3C', 'FADBD8'), # Red theme - invalid data
-            'Fully_Valid_Data': ('27AE60', 'D5F4E6'),       # Bright green - best data
-            'All_Invalid_Data': ('C0392B', 'F5B7B1'),       # Bright red - problem data
-            'Data_Quality_Summary': ('8E44AD', 'E8DAEF')    # Purple theme - summary/analysis
-        }
-        
-        # Apply formatting to each sheet
-        sheets_formatted = 0
-        for sheet_name, (header_color, data_color) in sheet_colors.items():
-            if sheet_name in workbook.sheetnames:
-                apply_sheet_formatting(workbook, sheet_name, header_color, data_color)
-                sheets_formatted += 1
-                print(f"  ✅ Formatted {sheet_name}")
-        
-        # Save the formatted workbook
-        workbook.save(output_path)
-        workbook.close()
-        print(f"🎨 Applied color formatting to {sheets_formatted} sheets!")
+        try:
+            workbook = openpyxl.load_workbook(output_path)
+            print(f"📂 Loaded workbook with sheets: {workbook.sheetnames}")
+            
+            # Color scheme for different sheet types
+            sheet_colors = {
+                'Original_Data': ('366092', 'D9E2F3'),          # Blue theme - original data
+                'All_Brands_Recognized': ('70AD47', 'E2EFDA'),  # Green theme - valid data
+                'Brands_Unrecognized': ('E74C3C', 'FADBD8'),    # Red theme - invalid data
+                'All_Categories_Recognized': ('70AD47', 'E2EFDA'),  # Green theme - valid data
+                'Categories_Unrecognized': ('E74C3C', 'FADBD8'), # Red theme - invalid data
+                'Valid_Purchase_Dates': ('70AD47', 'E2EFDA'),   # Green theme - valid data
+                'Invalid_Purchase_Dates': ('E74C3C', 'FADBD8'), # Red theme - invalid data
+                'Fully_Valid_Data': ('27AE60', 'D5F4E6'),       # Bright green - best data
+                'All_Invalid_Data': ('C0392B', 'F5B7B1'),       # Bright red - problem data
+                'Data_Quality_Summary': ('8E44AD', 'E8DAEF')    # Purple theme - summary/analysis
+            }
+            
+            # Apply formatting to each sheet
+            sheets_formatted = 0
+            for sheet_name, (header_color, data_color) in sheet_colors.items():
+                if sheet_name in workbook.sheetnames:
+                    success = apply_sheet_formatting(workbook, sheet_name, header_color, data_color)
+                    if success:
+                        sheets_formatted += 1
+                        print(f"  ✅ Formatted {sheet_name}")
+                    else:
+                        print(f"  ❌ Failed to format {sheet_name}")
+                else:
+                    print(f"  ⚠️  Sheet {sheet_name} not found")
+            
+            # Save the formatted workbook
+            workbook.save(output_path)
+            workbook.close()
+            print(f"🎨 Applied color formatting to {sheets_formatted} sheets!")
+            print(f"💾 Saved formatted workbook to: {output_path}")
+            
+        except Exception as e:
+            print(f"❌ Error during color formatting: {e}")
+            print("📄 Excel file was saved without color formatting")
 
         print(f"\nResults saved to {output_path}")
         print(f"Devices with valid purchase dates: {len(valid_purchase_dates)}")
@@ -408,3 +454,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
